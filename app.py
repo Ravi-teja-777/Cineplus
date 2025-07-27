@@ -379,22 +379,22 @@ def add_movie():
 @login_required
 def add_review(movie_id):
     if request.method == 'POST':
-        data = request.form if request.form else request.get_json()
-        
-        rating = data.get('rating')
-        comment = data.get('comment', '')
-        
-        if not rating:
-            flash('Rating is required')
-            return render_template('add_review.html', movie_id=movie_id) if request.form else jsonify({'error': 'Rating required'}), 400
-        
-        # Analyze sentiment
-        sentiment, sentiment_score = analyze_sentiment(comment) if comment else ('neutral', 0)
-        
-        review_id = str(uuid.uuid4())
-        
         try:
-            # Add review to database
+            data = request.form if request.form else request.get_json()
+
+            rating = data.get('rating')
+            comment = data.get('comment', '')
+
+            if not rating:
+                flash('Rating is required')
+                return render_template('add_review.html', movie_id=movie_id) if request.form else jsonify({'error': 'Rating required'}), 400
+
+            # Analyze sentiment
+            sentiment, sentiment_score = analyze_sentiment(comment) if comment else ('neutral', 0)
+
+            review_id = str(uuid.uuid4())
+
+            # Save review to DynamoDB
             reviews_table.put_item(Item={
                 'review_id': review_id,
                 'movie_id': movie_id,
@@ -406,44 +406,53 @@ def add_review(movie_id):
                 'sentiment_score': float(sentiment_score),
                 'created_at': datetime.now().isoformat()
             })
-            
-            # Send alert for negative reviews
+
+            # Optional SNS Alert
             if sentiment == 'negative' and sentiment_score < -0.5:
                 alert_message = f"Negative review detected!\nMovie ID: {movie_id}\nUser: {session['username']}\nRating: {rating}/5\nComment: {comment[:100]}..."
                 send_sns_alert(alert_message, "Negative Movie Review Alert")
-            
+
             flash('Review added successfully')
             if request.form:
                 return redirect(url_for('movies'))
             else:
                 return jsonify({'message': 'Review added successfully', 'review_id': review_id}), 201
-                
+
         except Exception as e:
+            print(f"❌ Error adding review: {e}")
             flash('Failed to add review')
             return render_template('add_review.html', movie_id=movie_id) if request.form else jsonify({'error': str(e)}), 500
-    
-    # Get movie details
+
+    # GET request: fetch movie info
     try:
         movie_response = movies_table.get_item(Key={'movie_id': movie_id})
         movie = movie_response.get('Item')
+
         if not movie:
             flash('Movie not found')
             return redirect(url_for('movies'))
+
+        return render_template('add_review.html', movie=movie)
+
     except Exception as e:
-        flash('Error loading movie')
+        print(f"❌ Error loading movie for review page: {e}")
+        flash('Error loading movie details')
         return redirect(url_for('movies'))
-    
-    return render_template('add_review.html', movie=movie)
+
 
 @app.route('/movie/<movie_id>/reviews')
 @login_required
 def movie_reviews(movie_id):
     try:
-        # Get movie details
+        # Fetch movie details
         movie_response = movies_table.get_item(Key={'movie_id': movie_id})
         movie = movie_response.get('Item')
-        
-        # Get reviews for this movie
+
+        if not movie:
+            flash('Movie not found')
+            return redirect(url_for('movies'))
+
+        # Fetch reviews for the movie using GSI
         reviews_response = reviews_table.query(
             IndexName='MovieIndex',
             KeyConditionExpression='movie_id = :movie_id',
@@ -451,11 +460,14 @@ def movie_reviews(movie_id):
             ScanIndexForward=False
         )
         reviews = reviews_response.get('Items', [])
-        
+
         return render_template('movie_reviews.html', movie=movie, reviews=reviews)
+
     except Exception as e:
-        flash(f'Error loading reviews: {str(e)}')
+        print(f"❌ Error loading reviews: {e}")
+        flash('Error loading reviews')
         return redirect(url_for('movies'))
+
 
 # ---------------------------------------
 # Feedback Routes
