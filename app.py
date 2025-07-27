@@ -375,6 +375,8 @@ def add_movie():
 # ---------------------------------------
 # Review Routes
 # ---------------------------------------
+from decimal import Decimal  # ✅ Add this import at the top
+
 @app.route('/movie/<movie_id>/review', methods=['GET', 'POST'])
 @login_required
 def add_review(movie_id):
@@ -403,7 +405,7 @@ def add_review(movie_id):
                 'rating': int(rating),
                 'comment': comment,
                 'sentiment': sentiment,
-                'sentiment_score': float(sentiment_score),
+                'sentiment_score': Decimal(str(sentiment_score)),  # ✅ Fixed here
                 'created_at': datetime.now().isoformat()
             })
 
@@ -438,7 +440,6 @@ def add_review(movie_id):
         print(f"❌ Error loading movie for review page: {e}")
         flash('Error loading movie details')
         return redirect(url_for('movies'))
-
 
 @app.route('/movie/<movie_id>/reviews')
 @login_required
