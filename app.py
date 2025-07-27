@@ -137,16 +137,16 @@ def index():
 def register():
     if request.method == 'POST':
         data = request.form if request.form else request.get_json()
-        
+
         username = data.get('username')
         email = data.get('email')
         password = data.get('password')
         role = data.get('role', 'customer')
-        
+
         if not all([username, email, password]):
             flash('All fields are required')
             return render_template('register.html') if request.form else jsonify({'error': 'All fields required'}), 400
-        
+
         # Check if user already exists
         try:
             response = users_table.get_item(Key={'email': email})
@@ -154,13 +154,14 @@ def register():
                 flash('User already exists')
                 return render_template('register.html') if request.form else jsonify({'error': 'User exists'}), 409
         except Exception as e:
+            print(f"❌ Error checking existing user: {e}")  # <-- Log actual error
             flash('Database error')
             return render_template('register.html') if request.form else jsonify({'error': str(e)}), 500
-        
+
         # Create new user
         user_id = str(uuid.uuid4())
         hashed_password = generate_password_hash(password)
-        
+
         try:
             users_table.put_item(Item={
                 'user_id': user_id,
@@ -171,17 +172,18 @@ def register():
                 'created_at': datetime.now().isoformat(),
                 'is_active': True
             })
-            
+
             flash('Registration successful')
             if request.form:
                 return redirect(url_for('login'))
             else:
                 return jsonify({'message': 'User created successfully', 'user_id': user_id}), 201
-                
+
         except Exception as e:
+            print(f"❌ Error saving user to DynamoDB: {e}")  # <-- Log actual error
             flash('Registration failed')
             return render_template('register.html') if request.form else jsonify({'error': str(e)}), 500
-    
+
     return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
